@@ -1,0 +1,12 @@
+{
+  "name": "heat",
+  "version": "1.0.0",
+  "description": "Two-zone chamber temperature controller with a browser UI and a JSON API",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  }
+}

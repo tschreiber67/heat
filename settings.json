@@ -1,0 +1,32 @@
+{
+  "upper": {
+    "mode": "auto",
+    "setpoint": 31,
+    "kp": 0.25,
+    "ki": 0.004,
+    "kd": 1,
+    "alarm_high": 50,
+    "alarm_low": 5,
+    "manual_duty": 0
+  },
+  "lower": {
+    "mode": "auto",
+    "setpoint": 29,
+    "kp": 0.25,
+    "ki": 0.004,
+    "kd": 1,
+    "alarm_high": 50,
+    "alarm_low": 5,
+    "manual_duty": 0
+  },
+  "vent_margin": 2,
+  "vent_override": null,
+  "max_zone_diff": 5,
+  "fault_hold_s": 30,
+  "over_temp": 34,
+  "electronics_max": 33,
+  "sensor_min": -30,
+  "sensor_max": 120,
+  "stale_s": 5,
+  "pwm_period_s": 10
+}

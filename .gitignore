@@ -1,0 +1,25 @@
+# dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+
+# runtime state
+settings.json
+settings.json.*.tmp
+*.tmp
+
+# logs
+*.log
+npm-debug.log*
+
+# archives and local tooling
+*.zip
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

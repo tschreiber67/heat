@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>heat</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font:14px system-ui,sans-serif;margin:0;background:#16181c;color:#e6e6e6}
+main{max-width:1000px;margin:auto;padding:16px}
+h1{font-size:18px;margin:0 0 12px}h2{font-size:14px;margin:18px 0 8px;color:#9aa}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.card{background:#20242a;border:1px solid #2e343c;border-radius:6px;padding:10px}
+.card b{display:block;font-size:22px}.lbl{color:#9aa;font-size:12px}
+#fault{padding:10px;border-radius:6px;margin-bottom:12px;background:#1f3a26}
+#fault.bad{background:#5a1f1f}
+canvas{width:100%;height:260px;background:#101215;border:1px solid #2e343c;border-radius:6px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+fieldset{border:1px solid #2e343c;border-radius:6px}
+label{display:flex;justify-content:space-between;gap:8px;margin:4px 0}
+input,select{width:90px;background:#101215;color:#e6e6e6;border:1px solid #3a4048;border-radius:4px;padding:2px 4px}
+button{background:#3b6ea5;color:#fff;border:0;border-radius:4px;padding:6px 12px;cursor:pointer}
+#msg{margin-left:10px}.err{color:#f88}
+</style></head><body><main>
+<h1>Heat controller</h1>
+<div id="fault">-</div>
+<div class="grid" id="cards"></div>
+<h2>History</h2><canvas id="chart" width="960" height="260"></canvas>
+<h2>Settings</h2>
+<form id="form"></form>
+<p><button id="save" type="button">Save settings</button><span id="msg"></span></p>
+<h2>Manual override</h2>
+<p>Vent % <input id="ov" type="number" min="0" max="100" value="50">
+<button id="setvent" type="button">Set vent</button>
+<button id="autovent" type="button">Vent auto</button></p>
+<script>
+const COLORS={upper:'#e8a33d',lower:'#d9654f',ambient:'#6aa5d8',electronics:'#9bd16a'};
+const $=id=>document.getElementById(id);
+const api=(p,o)=>fetch('/api/'+p,o).then(async r=>{const j=await r.json();if(!r.ok)throw j;return j});
+const ZF=[['mode','select'],['setpoint'],['kp'],['ki'],['kd'],['alarm_high'],['alarm_low'],['manual_duty']];
+const GF=['vent_margin','max_zone_diff','fault_hold_s','over_temp','electronics_max','stale_s','pwm_period_s'];
+let built=false;
+
+function build(s){
+  const f=$('form');f.innerHTML='';
+  for(const z of ['upper','lower']){
+    const fs=document.createElement('fieldset');fs.innerHTML='<legend>'+z+' zone</legend>';
+    for(const [k,t] of ZF){
+      const l=document.createElement('label');l.textContent=k;
+      const i=document.createElement(t==='select'?'select':'input');
+      if(t==='select')i.innerHTML='<option>auto</option><option>manual</option><option>off</option>';
+      else{i.type='number';i.step='any'}
+      i.dataset.path=z+'.'+k;i.value=s[z][k];l.appendChild(i);fs.appendChild(l);
+    }
+    f.appendChild(fs);
+  }
+  const fs=document.createElement('fieldset');fs.innerHTML='<legend>global</legend>';
+  for(const k of GF){const l=document.createElement('label');l.textContent=k;
+    const i=document.createElement('input');i.type='number';i.step='any';i.dataset.path=k;i.value=s[k];
+    l.appendChild(i);fs.appendChild(l)}
+  f.appendChild(fs);built=true;
+}
+function collect(){
+  const o={};
+  document.querySelectorAll('[data-path]').forEach(i=>{
+    const p=i.dataset.path.split('.');const v=i.tagName==='SELECT'?i.value:parseFloat(i.value);
+    if(p.length===2){(o[p[0]]=o[p[0]]||{})[p[1]]=v}else o[p[0]]=v});
+  return o;
+}
+$('save').onclick=async()=>{
+  try{await api('settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(collect())});
+    $('msg').className='';$('msg').textContent='saved'}
+  catch(e){$('msg').className='err';$('msg').textContent=JSON.stringify(e.detail||e)}
+};
+const ov=b=>api('override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+$('setvent').onclick=()=>ov({vent:parseFloat($('ov').value)});
+$('autovent').onclick=()=>ov({clear_vent:true});
+
+function cards(s){
+  const f=$('fault');
+  if(s.fault){f.className='bad';f.textContent='FAULT: '+s.fault_reasons.join('; ')+
+    (s.clear_remaining_s!=null?' (readings healthy, clearing in '+s.clear_remaining_s+'s)':'')+' - vents open, heaters off'}
+  else{f.className='';f.textContent='Normal operation'}
+  $('cards').innerHTML=['upper','lower','ambient','electronics'].map(k=>
+    '<div class="card"><span class="lbl">'+k+'</span><b style="color:'+COLORS[k]+'">'+
+    (s.temps[k]!=null?s.temps[k].toFixed(1)+' C':'--')+'</b>'+
+    (s.heater[k]!==undefined?'<span class="lbl">heater '+(s.heater[k]?'ON':'off')+' / duty '+Math.round(s.duty[k]*100)+'%</span>':'')+
+    '</div>').join('')+
+    '<div class="card"><span class="lbl">vent</span><b>'+s.vent+'%</b></div>';
+}
+function chart(h){
+  const c=$('chart'),g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);
+  if(h.length<2)return;
+  let lo=1e9,hi=-1e9;
+  h.forEach(r=>Object.values(r.temps).forEach(v=>{lo=Math.min(lo,v);hi=Math.max(hi,v)}));
+  lo-=1;hi+=1;const x=i=>i/(h.length-1)*(c.width-50)+45,y=v=>c.height-15-(v-lo)/(hi-lo)*(c.height-30);
+  g.fillStyle='#9aa';g.font='11px sans-serif';
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;g.fillText(v.toFixed(0),5,y(v)+4);
+    g.strokeStyle='#23282e';g.beginPath();g.moveTo(40,y(v));g.lineTo(c.width,y(v));g.stroke()}
+  for(const k in COLORS){g.strokeStyle=COLORS[k];g.beginPath();let st=false;
+    h.forEach((r,i)=>{if(r.temps[k]==null)return;st?g.lineTo(x(i),y(r.temps[k])):g.moveTo(x(i),y(r.temps[k]));st=true});g.stroke()}
+  g.fillStyle='rgba(200,60,60,.25)';
+  h.forEach((r,i)=>{if(r.fault)g.fillRect(x(i),0,Math.max(2,c.width/h.length),c.height)});
+}
+async function poll(){
+  try{
+    const [s,h]=await Promise.all([api('state'),api('history?limit=300')]);
+    cards(s);chart(h);
+    if(!built)build(await api('settings'));
+  }catch(e){$('fault').className='bad';$('fault').textContent='API unreachable'}
+}
+poll();setInterval(poll,1000);
+</script></main></body></html>
